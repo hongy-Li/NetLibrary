@@ -390,6 +390,7 @@ public class OKHttpUtils implements BaseNet {
     @Override
     public void getHttp(String url, Map<String, Object> params, IRequestListener listener) {
         url = changeURL(url, params);
+        Log.i(TAG,"URL="+url);
         Request request = new Request.Builder()
                 .url(url)
                 .get()
@@ -398,7 +399,7 @@ public class OKHttpUtils implements BaseNet {
         mcall.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-
+                Log.i(TAG, "onFailure---");
             }
 
             @Override
