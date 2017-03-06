@@ -1,5 +1,7 @@
 package com.lhy.netlibrary;
 
+import org.json.JSONException;
+
 import java.util.Map;
 
 /**
@@ -8,5 +10,5 @@ import java.util.Map;
 public interface BaseNet {
     void getHttp(String url, Map<String, Object> params, IRequestListener listener);
 
-    void postHttp(String url, Map<String, Object> params, IRequestListener listener);
+    void postHttp(String url, Map<String, Object> params, IRequestListener listener) throws  Exception;
 }

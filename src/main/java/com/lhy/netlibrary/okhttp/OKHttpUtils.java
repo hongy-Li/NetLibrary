@@ -8,6 +8,7 @@ import com.lhy.netlibrary.BaseNet;
 import com.lhy.netlibrary.IDownLoadListener;
 import com.lhy.netlibrary.IRequestListener;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -366,7 +367,6 @@ public class OKHttpUtils implements BaseNet {
                 lastUrl = url;
             }
         }
-        Log.i(TAG, "lastUrl=" + lastUrl);
         return lastUrl;
     }
 
@@ -388,48 +388,94 @@ public class OKHttpUtils implements BaseNet {
     }
 
     @Override
-    public void getHttp(String url, Map<String, Object> params, IRequestListener listener) {
+    public void getHttp(String url, Map<String, Object> params, final IRequestListener listener) {
         url = changeURL(url, params);
-        Log.i(TAG,"URL="+url);
         Request request = new Request.Builder()
                 .url(url)
                 .get()
                 .build();
-        Call mcall = getProgressClient(false, null).newCall(request);
-        mcall.enqueue(new Callback() {
+        Call call = getProgressClient(false, null).newCall(request);
+        call.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                Log.i(TAG, "onFailure---");
+                if (listener != null) {
+                    listener.onFailed(e);
+                }
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                if (null != response.cacheResponse()) {
-                    String str = response.cacheResponse().toString();
-                    Log.i(TAG, "cache---" + str);
-                } else {
-
-                    String str = response.networkResponse().toString();
-                    Log.i(TAG, "network---" + str);
-                    Log.i(TAG, response.body().string());
-                    Log.i(TAG, response.body().contentType().toString());
-                    Log.i(TAG, response.cacheControl().toString());
-//                Log.i(TAG, response.cacheResponse().toString());
-                    Log.i(TAG, response.challenges().toString());
-                    Log.i(TAG, response.code() + "");
-//                Log.i(TAG, response.handshake().toString());
-                    Log.i(TAG, response.headers().toString());
-                    Log.i(TAG, response.isRedirect() + "");
-                    Log.i(TAG, response.isSuccessful() + "");
-                    Log.i(TAG, response.message() + "");
-                    Log.i(TAG, response.request().method() + "");
+                if (listener != null) {
+                    listener.onSucceed(response.body().string());
                 }
+//                if (null != response.cacheResponse()) {
+//                    String str = response.cacheResponse().toString();
+//                    Log.i(TAG, "cache---" + str);
+//                } else {
+//                    String str = response.networkResponse().toString();
+//                    Log.i(TAG, "network---" + str);
+//                    Log.i(TAG, response.body().string());
+//                    Log.i(TAG, response.body().contentType().toString());
+//                    Log.i(TAG, response.cacheControl().toString());
+////                Log.i(TAG, response.cacheResponse().toString());
+//                    Log.i(TAG, response.challenges().toString());
+//                    Log.i(TAG, response.code() + "");
+////                Log.i(TAG, response.handshake().toString());
+//                    Log.i(TAG, response.headers().toString());
+//                    Log.i(TAG, response.isRedirect() + "");
+//                    Log.i(TAG, response.isSuccessful() + "");
+//                    Log.i(TAG, response.message() + "");
+//                    Log.i(TAG, response.request().method() + "");
+//                }
             }
         });
     }
 
     @Override
-    public void postHttp(String url, Map<String, Object> params, IRequestListener listener) {
+    public void postHttp(String url, Map<String, Object> params, final IRequestListener listener) throws Exception {
+        JSONObject json = new JSONObject();
+        if (params != null) {
+            for (Map.Entry<String, Object> entry : params.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                json.put(key, value);
+            }
+        }
+        Request request = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), json.toString()))
+                .build();
+        Call call = getProgressClient(false, null).newCall(request);
+        call.enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                if (listener != null) {
+                    listener.onFailed(e);
+                }
+            }
 
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (listener != null) {
+                    listener.onSucceed(response.body().string());
+                }
+//                String body = response.body().string();
+//                String res = response.toString();
+//                response.body().contentType();
+//                Log.i(TAG, body);
+//                Log.i(TAG, response.body().contentType().toString());
+//                Log.i(TAG, response.cacheControl().toString());
+////                Log.i(TAG, response.cacheResponse().toString());
+//                Log.i(TAG, response.challenges().toString());
+//                Log.i(TAG, response.code() + "");
+////                Log.i(TAG, response.handshake().toString());
+//                Log.i(TAG, response.headers().toString());
+//                Log.i(TAG, response.isRedirect() + "");
+//                Log.i(TAG, response.isSuccessful() + "");
+//                Log.i(TAG, response.message() + "");
+//                Log.i(TAG, response.request().method() + "");
+            }
+
+        });
     }
 }
