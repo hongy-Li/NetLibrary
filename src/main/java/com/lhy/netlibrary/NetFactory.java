@@ -8,7 +8,7 @@ import com.lhy.netlibrary.okhttp.OKHttpUtils;
  */
 public class NetFactory {
     public enum NetType {
-        OK_HTTP;
+        OK_HTTP
     }
 
     public static <T extends BaseNet> T createNetUtils(NetType type) {
@@ -18,7 +18,7 @@ public class NetFactory {
                 baseNet = OKHttpUtils.getInstance();
                 break;
         }
-        return (T)baseNet;
+        return (T) baseNet;
     }
 
     ;
