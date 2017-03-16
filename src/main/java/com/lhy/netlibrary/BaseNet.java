@@ -1,14 +1,17 @@
 package com.lhy.netlibrary;
 
-import org.json.JSONException;
 
 import java.util.Map;
 
 /**
- * Created by lhy on 2017/2/28.
+ * Created by lhy on 2017/2/28
  */
 public interface BaseNet {
-    void getHttp(String url, Map<String, Object> params, IRequestListener listener);
+    void getRequest(String url, Map<String, Object> params, IRequestListener listener);
 
-    void postHttp(String url, Map<String, Object> params, IRequestListener listener) throws  Exception;
+    void postRequest(String url, Map<String, Object> params, IRequestListener listener);
+
+    void downloadFileWithProgress(String url, String filePath, String filename, IProgressListener listener);
+
+    void uploadFileWithProgress(String url, String filePath, String fileName, IProgressListener listener);
 }

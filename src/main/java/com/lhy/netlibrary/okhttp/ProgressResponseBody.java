@@ -1,6 +1,6 @@
 package com.lhy.netlibrary.okhttp;
 
-import com.lhy.netlibrary.IDownLoadListener;
+import com.lhy.netlibrary.IProgressListener;
 
 import java.io.IOException;
 
@@ -17,11 +17,11 @@ import okio.Source;
  */
 public class ProgressResponseBody extends ResponseBody {
     private final ResponseBody responseBody;
-    private final IDownLoadListener progressListener;
+    private final IProgressListener progressListener;
     private BufferedSource bufferedSource;
 
     public ProgressResponseBody(ResponseBody responseBody,
-                                IDownLoadListener progressListener) {
+                                IProgressListener progressListener) {
         this.responseBody = responseBody;
         this.progressListener = progressListener;
     }

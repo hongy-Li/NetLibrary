@@ -1,7 +1,7 @@
 package com.lhy.netlibrary.okhttp;
 
 
-import com.lhy.netlibrary.IDownLoadListener;
+import com.lhy.netlibrary.IProgressListener;
 
 import java.io.IOException;
 
@@ -20,11 +20,11 @@ public class ProgressRequestBody extends RequestBody {
     //实际的待包装请求体
     private RequestBody requestBody;
     //进度回调接口
-    private IDownLoadListener progressListener;
+    private IProgressListener progressListener;
     //包装完成的BufferedSink
     private BufferedSink bufferedSink;
 
-    public ProgressRequestBody(RequestBody requestBody, IDownLoadListener progressListener) {
+    public ProgressRequestBody(RequestBody requestBody, IProgressListener progressListener) {
         this.requestBody = requestBody;
         this.progressListener = progressListener;
     }

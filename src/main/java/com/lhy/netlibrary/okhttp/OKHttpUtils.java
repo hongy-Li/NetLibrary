@@ -5,7 +5,7 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.lhy.netlibrary.BaseNet;
-import com.lhy.netlibrary.IDownLoadListener;
+import com.lhy.netlibrary.IProgressListener;
 import com.lhy.netlibrary.IRequestListener;
 
 import org.json.JSONException;
@@ -44,6 +44,8 @@ import okio.Okio;
  * Created by lhy on 2017/2/25
  */
 public class OKHttpUtils implements BaseNet {
+    private static final String TAG = "OKHttpUtils";
+
     private OKHttpUtils() {
         mCommonClient = new OkHttpClient();
     }
@@ -57,11 +59,14 @@ public class OKHttpUtils implements BaseNet {
         private static final OKHttpUtils sInstance = new OKHttpUtils();
     }
 
-    private static final String TAG = "OKHttpUtils";
+
     private OkHttpClient mCommonClient;
     private Map<String, Call> mCall = new HashMap<>();//用于断点续传
+    boolean isAutoResume;
+    long startPoints;
 
-    public void downLoad(final boolean isAutoResume, String url, String path, String filename, final long startPoints, final IDownLoadListener downLoadListener) {
+    @Override
+    public void downloadFileWithProgress(String url, String path, String filename, final IProgressListener downLoadListener) {
         // 拦截器，用上ProgressResponseBody
         if (TextUtils.isEmpty(path)) {
             path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getPath();
@@ -96,32 +101,82 @@ public class OKHttpUtils implements BaseNet {
             }
 
             @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (isAutoResume) {
-                    save(response, startPoints, file);
-                } else {
-                    save(response, file);
+            public void onResponse(Call call, Response response){
+                try {
+                    if (isAutoResume) {
+                        saveFile(response, startPoints, file);
+                    } else {
+                        saveFile(response, file);
+                    }
+                } catch (Exception e) {
+                    if (downLoadListener != null) {
+                        downLoadListener.onFailed(e);
+                    }
                 }
+
             }
         });
     }
 
-    private void onPause(String url) {
+    @Override
+    public void uploadFileWithProgress(String url, String filePath, String fileName, final IProgressListener listener) {
+        if (!TextUtils.isEmpty(url) && !TextUtils.isEmpty(filePath)) {
+            File file = new File(filePath);
+            if (TextUtils.isEmpty(fileName)) {
+                int index = filePath.lastIndexOf("/");
+                fileName = filePath.substring(index + 1, filePath.length());
+            }
+            RequestBody fileBody = RequestBody.create(MediaType.parse("multipart/form-data"), file);
+            RequestBody requestBody = new MultipartBody.Builder() //建立请求的内容
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", fileName, fileBody)
+                    .build();
+            Request request = new Request.Builder()
+                    .url(url)
+                    .post(new ProgressRequestBody(requestBody, listener))
+                    .build();
+            mCommonClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    if (listener != null) {
+                        listener.onFailed(e);
+                    }
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) {
+                    try {
+                        String str = response.body().string();
+                        if (listener != null) {
+                            listener.onSucceed(str);
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        if (listener != null) {
+                            listener.onFailed(e);
+                        }
+                    }
+                }
+            });
+        } else {
+            if (listener != null) {
+                listener.onFailed(new Exception("parameter is illegal"));
+            }
+        }
+    }
+
+    public void onPause(String url) {
         Call call = mCall.get(url);
         if (call != null) {
             call.cancel();
         }
     }
 
-    private void save(Response response, File file) {
-        try {
-            BufferedSink sink = Okio.buffer(Okio.sink(file));
-            sink.writeAll(response.body().source());
-            sink.close();
-            Log.i(TAG, "Path=" + file.getPath());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    private void saveFile(Response response, File file) throws Exception {
+        BufferedSink sink = Okio.buffer(Okio.sink(file));
+        sink.writeAll(response.body().source());
+        sink.close();
+        Log.i(TAG, "Path=" + file.getPath());
     }
 
     private void save1(Response response, File file) {
@@ -144,7 +199,7 @@ public class OKHttpUtils implements BaseNet {
         Log.d(TAG, "文件下载成功");
     }
 
-    private void save(Response response, long startsPoint, File file) {
+    private void saveFile(Response response, long startsPoint, File file) {
         ResponseBody body = response.body();
         InputStream in = body.byteStream();
         FileChannel channelOut = null;
@@ -178,7 +233,7 @@ public class OKHttpUtils implements BaseNet {
         }
     }
 
-    private OkHttpClient getProgressClient(boolean isDownOrUpload, final IDownLoadListener progressListener) {
+    private OkHttpClient getProgressClient(boolean isDownOrUpload, final IProgressListener progressListener) {
         // 拦截器，用上ProgressResponseBody
         if (mCommonClient == null) {
             mCommonClient = new OkHttpClient();
@@ -193,11 +248,10 @@ public class OKHttpUtils implements BaseNet {
                             .build();
                 }
             };
-
-
-            return new OkHttpClient.Builder()
+            mCommonClient = mCommonClient.newBuilder()
                     .addNetworkInterceptor(interceptor)
                     .build();
+            return mCommonClient;
         }
         return mCommonClient;
     }
@@ -205,148 +259,12 @@ public class OKHttpUtils implements BaseNet {
     /**
      * 截取路径中 最后一个 / 后的内容
      *
-     * @param url
-     * @return
+     * @param url 文件URL
+     * @return 文件名字
      */
-    public String getFileNameFromUrl(String url) {
+    private String getFileNameFromUrl(String url) {
         int separatorIndex = url.lastIndexOf("/");
         return ((separatorIndex < 0) ? url : url.substring(separatorIndex + 1, url.length()));
-    }
-
-    /**
-     * get异步请求
-     */
-    public void getAsynHttp(String url, Map<String, Object> params, IRequestListener listener) {
-        url = changeURL(url, params);
-        Request request = new Request.Builder()
-                .url(url)
-                .get()
-                .build();
-        Call mcall = getProgressClient(false, null).newCall(request);
-        mcall.enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (null != response.cacheResponse()) {
-                    String str = response.cacheResponse().toString();
-                    Log.i(TAG, "cache---" + str);
-                } else {
-
-                    String str = response.networkResponse().toString();
-                    Log.i(TAG, "network---" + str);
-                    Log.i(TAG, response.body().string());
-                    Log.i(TAG, response.body().contentType().toString());
-                    Log.i(TAG, response.cacheControl().toString());
-//                Log.i(TAG, response.cacheResponse().toString());
-                    Log.i(TAG, response.challenges().toString());
-                    Log.i(TAG, response.code() + "");
-//                Log.i(TAG, response.handshake().toString());
-                    Log.i(TAG, response.headers().toString());
-                    Log.i(TAG, response.isRedirect() + "");
-                    Log.i(TAG, response.isSuccessful() + "");
-                    Log.i(TAG, response.message() + "");
-                    Log.i(TAG, response.request().method() + "");
-                }
-            }
-        });
-    }
-
-    /**
-     * post异步请求
-     */
-    public void postAsynHttp(String url, Map<String, Object> params) throws Exception {
-        JSONObject json = new JSONObject();
-        if (params != null) {
-            for (Map.Entry<String, Object> entry : params.entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
-                json.put(key, value);
-            }
-        }
-
-        Request request = new Request.Builder()
-                .url(url)
-                .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), json.toString()))
-                .build();
-        Call call = getProgressClient(false, null).newCall(request);
-        call.enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                Log.i(TAG, "e=" + e.toString());
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                String body = response.body().string();
-                String res = response.toString();
-                response.body().contentType();
-                Log.i(TAG, body);
-                Log.i(TAG, response.body().contentType().toString());
-                Log.i(TAG, response.cacheControl().toString());
-//                Log.i(TAG, response.cacheResponse().toString());
-                Log.i(TAG, response.challenges().toString());
-                Log.i(TAG, response.code() + "");
-//                Log.i(TAG, response.handshake().toString());
-                Log.i(TAG, response.headers().toString());
-                Log.i(TAG, response.isRedirect() + "");
-                Log.i(TAG, response.isSuccessful() + "");
-                Log.i(TAG, response.message() + "");
-                Log.i(TAG, response.request().method() + "");
-            }
-
-        });
-    }
-
-    /**
-     * 异步上传文件
-     */
-    public void postAsynFile(String filePath, String url, IDownLoadListener listener) {
-//        File file = new File(filePath);
-//        String filename="滚滚红尘";
-//        RequestBody fileBody = RequestBody.create(MediaType.parse("application/octet-stream"), file);
-//        RequestBody requestBody = new MultipartBody.Builder()
-//                .setType(MultipartBody.FORM)
-//                .addPart(Headers.of(
-//                        "Content-Disposition",
-//                        "form-data; name=\"username\""),
-//                        RequestBody.create(null, "HGR"))
-//                .addPart(Headers.of(
-//                        "Content-Disposition",
-//                        "form-data; name=\"mFile\"; filename=\"" + filename + "\""), fileBody)
-//                .build();
-//
-//        Request request = new Request.Builder()
-//                .url(url)
-//                .post(new ProgressRequestBody(requestBody, listener));
-
-
-        File file = new File(filePath);
-//        RequestBody fileBody = RequestBody.create(MediaType.parse("application/octet-stream"), file);
-        RequestBody fileBody = RequestBody.create(MediaType.parse("multipart/form-data"), file);
-
-        RequestBody requestBody = new MultipartBody.Builder() //建立请求的内容
-                .setType(MultipartBody.FORM)
-                .addPart(fileBody)
-                .build();
-        Request request = new Request.Builder()
-                .url(url)
-                .post(new ProgressRequestBody(requestBody, listener))
-                .build();
-        mCommonClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                Log.i(TAG, e.toString());
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                Log.i(TAG, response.body().string());
-            }
-        });
     }
 
     private String changeURL(String url, Map<String, Object> params) {
@@ -388,7 +306,7 @@ public class OKHttpUtils implements BaseNet {
     }
 
     @Override
-    public void getHttp(String url, Map<String, Object> params, final IRequestListener listener) {
+    public void getRequest(String url, Map<String, Object> params, final IRequestListener listener) {
         url = changeURL(url, params);
         Request request = new Request.Builder()
                 .url(url)
@@ -408,74 +326,45 @@ public class OKHttpUtils implements BaseNet {
                 if (listener != null) {
                     listener.onSucceed(response.body().string());
                 }
-//                if (null != response.cacheResponse()) {
-//                    String str = response.cacheResponse().toString();
-//                    Log.i(TAG, "cache---" + str);
-//                } else {
-//                    String str = response.networkResponse().toString();
-//                    Log.i(TAG, "network---" + str);
-//                    Log.i(TAG, response.body().string());
-//                    Log.i(TAG, response.body().contentType().toString());
-//                    Log.i(TAG, response.cacheControl().toString());
-////                Log.i(TAG, response.cacheResponse().toString());
-//                    Log.i(TAG, response.challenges().toString());
-//                    Log.i(TAG, response.code() + "");
-////                Log.i(TAG, response.handshake().toString());
-//                    Log.i(TAG, response.headers().toString());
-//                    Log.i(TAG, response.isRedirect() + "");
-//                    Log.i(TAG, response.isSuccessful() + "");
-//                    Log.i(TAG, response.message() + "");
-//                    Log.i(TAG, response.request().method() + "");
-//                }
             }
         });
     }
 
     @Override
-    public void postHttp(String url, Map<String, Object> params, final IRequestListener listener) throws Exception {
+    public void postRequest(String url, Map<String, Object> params, final IRequestListener listener) {
         JSONObject json = new JSONObject();
-        if (params != null) {
-            for (Map.Entry<String, Object> entry : params.entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
-                json.put(key, value);
+        try {
+            if (params != null) {
+                for (Map.Entry<String, Object> entry : params.entrySet()) {
+                    String key = entry.getKey();
+                    Object value = entry.getValue();
+                    json.put(key, value);
+                }
+            }
+            Request request = new Request.Builder()
+                    .url(url)
+                    .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), json.toString()))
+                    .build();
+            Call call = getProgressClient(false, null).newCall(request);
+            call.enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    if (listener != null) {
+                        listener.onFailed(e);
+                    }
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (listener != null) {
+                        listener.onSucceed(response.body().string());
+                    }
+                }
+            });
+        } catch (JSONException e) {
+            if (listener != null) {
+                listener.onFailed(e);
             }
         }
-        Request request = new Request.Builder()
-                .url(url)
-                .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), json.toString()))
-                .build();
-        Call call = getProgressClient(false, null).newCall(request);
-        call.enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                if (listener != null) {
-                    listener.onFailed(e);
-                }
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (listener != null) {
-                    listener.onSucceed(response.body().string());
-                }
-//                String body = response.body().string();
-//                String res = response.toString();
-//                response.body().contentType();
-//                Log.i(TAG, body);
-//                Log.i(TAG, response.body().contentType().toString());
-//                Log.i(TAG, response.cacheControl().toString());
-////                Log.i(TAG, response.cacheResponse().toString());
-//                Log.i(TAG, response.challenges().toString());
-//                Log.i(TAG, response.code() + "");
-////                Log.i(TAG, response.handshake().toString());
-//                Log.i(TAG, response.headers().toString());
-//                Log.i(TAG, response.isRedirect() + "");
-//                Log.i(TAG, response.isSuccessful() + "");
-//                Log.i(TAG, response.message() + "");
-//                Log.i(TAG, response.request().method() + "");
-            }
-
-        });
     }
 }
