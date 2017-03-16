@@ -4,7 +4,7 @@ package com.lhy.netlibrary;
 import com.lhy.netlibrary.okhttp.OKHttpUtils;
 
 /**
- * Created by lhy on 2017/2/28.
+ * Created by lhy on 2017/2/28
  */
 public class NetFactory {
     public enum NetType {

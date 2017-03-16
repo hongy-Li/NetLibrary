@@ -1,5 +1,5 @@
 apply plugin: 'com.android.library'
-
+apply plugin: 'com.novoda.bintray-release'
 android {
     compileSdkVersion 24
     buildToolsVersion "24.0.3"
@@ -16,12 +16,22 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    //忽略错误信息
+    lintOptions {
+        abortOnError false
+    }
 }
-
+publish {
+    userOrg = 'l511329028'      //bintray注册的用户名
+    groupId = 'com.lhy'//compile引用时的第1部分groupId
+    artifactId = 'NetLibrary'     //compile引用时的第2部分项目名
+    publishVersion = '1.0.0'    //compile引用时的第3部分版本号
+    desc = 'This is a net library '
+    website = 'https://github.com/hongy-Li/NetLibrary'
+}
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     testCompile 'junit:junit:4.12'
-    compile 'com.android.support:appcompat-v7:24.2.1'
     compile 'com.squareup.okhttp3:okhttp:3.2.0'
     compile 'com.squareup.okio:okio:1.7.0'
 }
