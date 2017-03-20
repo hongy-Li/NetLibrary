@@ -5,5 +5,5 @@ package com.lhy.netlibrary;
  */
 public interface IRequestListener {
         void onSucceed(String msg);
-        void onFailed(Exception e);
+        void onFailed(int code, Exception e);
 }
