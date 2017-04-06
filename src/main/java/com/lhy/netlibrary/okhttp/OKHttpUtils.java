@@ -1,5 +1,6 @@
 package com.lhy.netlibrary.okhttp;
 
+import android.content.Context;
 import android.os.Environment;
 import android.text.TextUtils;
 import android.util.Log;
@@ -7,6 +8,7 @@ import android.util.Log;
 import com.lhy.netlibrary.BaseNet;
 import com.lhy.netlibrary.IProgressListener;
 import com.lhy.netlibrary.IRequestListener;
+import com.lhy.netlibrary.utils.NetUtil;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -50,7 +52,10 @@ public class OKHttpUtils implements BaseNet {
         mCommonClient = new OkHttpClient();
     }
 
-    public static OKHttpUtils getInstance() {
+    private static Context sContext;
+
+    public static OKHttpUtils getInstance(Context context) {
+        sContext = context.getApplicationContext();
         return OKHttpUtilsHolder.sInstance;
     }
 
@@ -67,6 +72,12 @@ public class OKHttpUtils implements BaseNet {
 
     @Override
     public void downloadFileWithProgress(String url, String path, String filename, final IProgressListener downLoadListener) {
+        if (!NetUtil.checkNet(sContext)) {
+            if (downLoadListener != null) {
+                downLoadListener.onFailed(new Exception("do you connection Internet?"));
+            }
+            return;
+        }
         // 拦截器，用上ProgressResponseBody
         if (TextUtils.isEmpty(path)) {
             path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getPath();
@@ -97,16 +108,23 @@ public class OKHttpUtils implements BaseNet {
         call.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-
+                Log.d(TAG, "onFailure: e=" + e.toString());
+                if (downLoadListener != null) {
+                    downLoadListener.onFailed(e);
+                }
             }
 
             @Override
-            public void onResponse(Call call, Response response){
+            public void onResponse(Call call, Response response) {
+                Log.d(TAG, "onResponse: response=" + response.code());
                 try {
                     if (isAutoResume) {
                         saveFile(response, startPoints, file);
                     } else {
-                        saveFile(response, file);
+                        String filePath = saveFile(response, file);
+                        if (downLoadListener != null) {
+                            downLoadListener.onSucceed(filePath);
+                        }
                     }
                 } catch (Exception e) {
                     if (downLoadListener != null) {
@@ -120,6 +138,12 @@ public class OKHttpUtils implements BaseNet {
 
     @Override
     public void uploadFileWithProgress(String url, String filePath, String fileName, final IProgressListener listener) {
+        if (!NetUtil.checkNet(sContext)) {
+            if (listener != null) {
+                listener.onFailed(new Exception("do you connection Internet?"));
+            }
+            return;
+        }
         if (!TextUtils.isEmpty(url) && !TextUtils.isEmpty(filePath)) {
             File file = new File(filePath);
             if (TextUtils.isEmpty(fileName)) {
@@ -138,6 +162,7 @@ public class OKHttpUtils implements BaseNet {
             mCommonClient.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
+                    Log.d(TAG, "onFailure: e=" + e.toString());
                     if (listener != null) {
                         listener.onFailed(e);
                     }
@@ -145,6 +170,7 @@ public class OKHttpUtils implements BaseNet {
 
                 @Override
                 public void onResponse(Call call, Response response) {
+                    Log.d(TAG, "onResponse: response=" + response.code());
                     try {
                         String str = response.body().string();
                         if (listener != null) {
@@ -172,11 +198,11 @@ public class OKHttpUtils implements BaseNet {
         }
     }
 
-    private void saveFile(Response response, File file) throws Exception {
+    private String saveFile(Response response, File file) throws Exception {
         BufferedSink sink = Okio.buffer(Okio.sink(file));
         sink.writeAll(response.body().source());
         sink.close();
-        Log.i(TAG, "Path=" + file.getPath());
+        return file.getPath();
     }
 
     private void save1(Response response, File file) {
@@ -248,10 +274,14 @@ public class OKHttpUtils implements BaseNet {
                             .build();
                 }
             };
-            mCommonClient = mCommonClient.newBuilder()
-                    .addNetworkInterceptor(interceptor)
-                    .build();
-            return mCommonClient;
+//            mCommonClient = mCommonClient.newBuilder()
+//                    .addNetworkInterceptor(interceptor)
+//                    .build();
+            OkHttpClient.Builder builder = mCommonClient.newBuilder();
+            builder.addInterceptor(interceptor);
+            builder.interceptors().clear();
+            builder.interceptors().add(interceptor);
+            return builder.build();
         }
         return mCommonClient;
     }
@@ -288,6 +318,9 @@ public class OKHttpUtils implements BaseNet {
         return lastUrl;
     }
 
+    public void setTimeOut(){
+
+    }
     public void setSupportCookie() {
         mCommonClient.newBuilder().cookieJar(new CookieJar() {
             private final HashMap<HttpUrl, List<Cookie>> cookieStore = new HashMap<>();
@@ -307,6 +340,12 @@ public class OKHttpUtils implements BaseNet {
 
     @Override
     public void getRequest(String url, Map<String, Object> params, final IRequestListener listener) {
+        if (!NetUtil.checkNet(sContext)) {
+            if (listener != null) {
+                listener.onFailed(new Exception("do you connection Internet?"));
+            }
+            return;
+        }
         url = changeURL(url, params);
         Request request = new Request.Builder()
                 .url(url)
@@ -332,6 +371,12 @@ public class OKHttpUtils implements BaseNet {
 
     @Override
     public void postRequest(String url, Map<String, Object> params, final IRequestListener listener) {
+        if (!NetUtil.checkNet(sContext)) {
+            if (listener != null) {
+                listener.onFailed(new Exception("do you connection Internet?"));
+            }
+            return;
+        }
         JSONObject json = new JSONObject();
         try {
             if (params != null) {
@@ -349,15 +394,21 @@ public class OKHttpUtils implements BaseNet {
             call.enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
+                    Log.d(TAG, "onFailure: e=" + e.toString());
                     if (listener != null) {
                         listener.onFailed(e);
                     }
                 }
 
                 @Override
-                public void onResponse(Call call, Response response) throws IOException {
+                public void onResponse(Call call, Response response) {
+                    Log.d(TAG, "onResponse: response=" + response.code());
                     if (listener != null) {
-                        listener.onSucceed(response.body().string());
+                        try {
+                            listener.onSucceed(response.body().string());
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
             });

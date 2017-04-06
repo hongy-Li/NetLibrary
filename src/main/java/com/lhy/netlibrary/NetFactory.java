@@ -1,6 +1,8 @@
 package com.lhy.netlibrary;
 
 
+import android.content.Context;
+
 import com.lhy.netlibrary.okhttp.OKHttpUtils;
 
 /**
@@ -11,11 +13,11 @@ public class NetFactory {
         OK_HTTP
     }
 
-    public static <T extends BaseNet> T createNetUtils(NetType type) {
+    public static <T extends BaseNet> T createNetUtils(Context context, NetType type) {
         BaseNet baseNet = null;
         switch (type) {
             case OK_HTTP:
-                baseNet = OKHttpUtils.getInstance();
+                baseNet = OKHttpUtils.getInstance(context);
                 break;
         }
         return (T) baseNet;

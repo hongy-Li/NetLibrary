@@ -1,5 +1,7 @@
 package com.lhy.netlibrary.okhttp;
 
+import android.util.Log;
+
 import com.lhy.netlibrary.IProgressListener;
 
 import java.io.IOException;
@@ -16,6 +18,7 @@ import okio.Source;
  * Created by lhy on 2017/2/25
  */
 public class ProgressResponseBody extends ResponseBody {
+    private static final String TAG="ProgressResponseBody";
     private final ResponseBody responseBody;
     private final IProgressListener progressListener;
     private BufferedSource bufferedSource;
@@ -57,6 +60,7 @@ public class ProgressResponseBody extends ResponseBody {
                 }
                 // read() returns the number of bytes read, or -1 if this source is exhausted.
                 currentBytes += bytesRead != -1 ? bytesRead : 0;
+                Log.e(TAG, "read: "+currentBytes);
                 if (null != progressListener) {
                     progressListener.progress(currentBytes, contentLength, bytesRead == -1);
                 }
