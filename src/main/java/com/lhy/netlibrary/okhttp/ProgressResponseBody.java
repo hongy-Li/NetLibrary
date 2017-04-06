@@ -62,6 +62,7 @@ public class ProgressResponseBody extends ResponseBody {
                 currentBytes += bytesRead != -1 ? bytesRead : 0;
                 Log.e(TAG, "read: "+currentBytes);
                 if (null != progressListener) {
+                    Log.i(TAG, "read: currentBytes="+currentBytes);
                     progressListener.progress(currentBytes, contentLength, bytesRead == -1);
                 }
                 return bytesRead;

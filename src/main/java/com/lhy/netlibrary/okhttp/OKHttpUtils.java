@@ -10,10 +10,10 @@ import com.lhy.netlibrary.IProgressListener;
 import com.lhy.netlibrary.IRequestListener;
 import com.lhy.netlibrary.utils.NetUtil;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,6 +30,7 @@ import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.Cookie;
 import okhttp3.CookieJar;
+import okhttp3.FormBody;
 import okhttp3.HttpUrl;
 import okhttp3.Interceptor;
 import okhttp3.MediaType;
@@ -39,6 +40,7 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import okhttp3.internal.framed.FramedConnection;
 import okio.BufferedSink;
 import okio.Okio;
 
@@ -47,6 +49,10 @@ import okio.Okio;
  */
 public class OKHttpUtils implements BaseNet {
     private static final String TAG = "OKHttpUtils";
+    public static final int CODE_UNKNOWN = -1;
+    public static final int CODE_PARAMS_ERROR = -2;
+    public static final int CODE_NO_NET = -3;
+    public static final int CODE_SUCCESS = 200;
 
     private OKHttpUtils() {
         mCommonClient = new OkHttpClient();
@@ -74,7 +80,7 @@ public class OKHttpUtils implements BaseNet {
     public void downloadFileWithProgress(String url, String path, String filename, final IProgressListener downLoadListener) {
         if (!NetUtil.checkNet(sContext)) {
             if (downLoadListener != null) {
-                downLoadListener.onFailed(new Exception("do you connection Internet?"));
+                downLoadListener.onFailed(-1, new Exception("do you connection Internet?"));
             }
             return;
         }
@@ -110,27 +116,33 @@ public class OKHttpUtils implements BaseNet {
             public void onFailure(Call call, IOException e) {
                 Log.d(TAG, "onFailure: e=" + e.toString());
                 if (downLoadListener != null) {
-                    downLoadListener.onFailed(e);
+                    downLoadListener.onFailed(CODE_UNKNOWN, e);
                 }
             }
 
             @Override
             public void onResponse(Call call, Response response) {
-                Log.d(TAG, "onResponse: response=" + response.code());
-                try {
-                    if (isAutoResume) {
-                        saveFile(response, startPoints, file);
-                    } else {
-                        String filePath = saveFile(response, file);
-                        if (downLoadListener != null) {
-                            downLoadListener.onSucceed(filePath);
+                if (downLoadListener != null) {
+                    try {
+                        int code = response.code();
+                        Log.d(TAG, "onResponse: code=" + code);
+                        if (code == 200) {//404
+                            if (isAutoResume) {
+                                saveFile(response, startPoints, file);
+                            } else {
+                                String filePath = saveFile(response, file);
+                                downLoadListener.onSucceed(filePath);
+                            }
+                        } else {
+                            downLoadListener.onFailed(code, new Exception("error"));
                         }
-                    }
-                } catch (Exception e) {
-                    if (downLoadListener != null) {
-                        downLoadListener.onFailed(e);
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        downLoadListener.onFailed(CODE_UNKNOWN, e);
                     }
                 }
+
 
             }
         });
@@ -140,7 +152,7 @@ public class OKHttpUtils implements BaseNet {
     public void uploadFileWithProgress(String url, String filePath, String fileName, final IProgressListener listener) {
         if (!NetUtil.checkNet(sContext)) {
             if (listener != null) {
-                listener.onFailed(new Exception("do you connection Internet?"));
+                listener.onFailed(-1, new Exception("do you connection Internet?"));
             }
             return;
         }
@@ -164,29 +176,135 @@ public class OKHttpUtils implements BaseNet {
                 public void onFailure(Call call, IOException e) {
                     Log.d(TAG, "onFailure: e=" + e.toString());
                     if (listener != null) {
-                        listener.onFailed(e);
+                        listener.onFailed(CODE_UNKNOWN, e);
                     }
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
-                    Log.d(TAG, "onResponse: response=" + response.code());
-                    try {
-                        String str = response.body().string();
-                        if (listener != null) {
-                            listener.onSucceed(str);
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        if (listener != null) {
-                            listener.onFailed(e);
+                    if (listener != null) {
+                        try {
+                            int code = response.code();
+                            String msg = response.body().string();
+                            Log.d(TAG, "onResponse: code=" + code + " msg=" + msg);
+                            if (code == CODE_SUCCESS) {
+                                listener.onSucceed(msg);
+                            } else {
+                                listener.onFailed(code, new Exception(msg));
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            listener.onFailed(CODE_UNKNOWN, e);
                         }
                     }
+
                 }
             });
         } else {
             if (listener != null) {
-                listener.onFailed(new Exception("parameter is illegal"));
+                listener.onFailed(CODE_PARAMS_ERROR, new Exception("parameter is illegal"));
+            }
+        }
+    }
+
+
+    @Override
+    public void getRequest(String url, Map<String, Object> params, final IRequestListener listener) {
+        if (!NetUtil.checkNet(sContext)) {
+            if (listener != null) {
+                listener.onFailed(CODE_NO_NET, new Exception("do you connection Internet?"));
+            }
+            return;
+        }
+        url = changeURL(url, params);
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+        Call call = getProgressClient(false, null).newCall(request);
+        call.enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                Log.d(TAG, "onFailure: e=" + e.toString());
+                if (listener != null) {
+                    listener.onFailed(CODE_UNKNOWN, e);
+                }
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) {
+                if (listener != null) {
+                    try {
+                        int code = response.code();
+                        String msg = response.body().string();
+                        Log.d(TAG, "onResponse: code=" + code + " msg=" + msg);
+                        if (code == 200) {
+                            listener.onSucceed(msg);
+                        } else {
+                            listener.onFailed(code, new Exception(msg));
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        listener.onFailed(CODE_UNKNOWN, e);
+                    }
+                }
+            }
+        });
+    }
+
+    @Override
+    public void postRequest(String url, Map<String, Object> params, final IRequestListener listener) {
+        if (!NetUtil.checkNet(sContext)) {
+            if (listener != null) {
+                listener.onFailed(CODE_NO_NET, new Exception("do you connection Internet?"));
+            }
+            return;
+        }
+        JSONObject json = new JSONObject();
+        try {
+            if (params != null) {
+                for (Map.Entry<String, Object> entry : params.entrySet()) {
+                    String key = entry.getKey();
+                    Object value = entry.getValue();
+                    json.put(key, value);
+                }
+            }
+            Request request = new Request.Builder()
+                    .url(url)
+                    .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), json.toString()))
+                    .build();
+            Call call = getProgressClient(false, null).newCall(request);
+            call.enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    Log.d(TAG, "onFailure: e=" + e.toString());
+                    if (listener != null) {
+                        listener.onFailed(CODE_UNKNOWN, e);
+                    }
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) {
+                    if (listener != null) {
+                        try {
+                            int code = response.code();
+                            String msg = response.body().string();
+                            Log.d(TAG, "onResponse: code=" + code + " msg=" + msg);
+                            if (code == 200) {
+                                listener.onSucceed(msg);
+                            } else {
+                                listener.onFailed(code, new Exception(msg));
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            listener.onFailed(CODE_UNKNOWN, e);
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            if (listener != null) {
+                listener.onFailed(CODE_UNKNOWN, e);
             }
         }
     }
@@ -269,20 +387,18 @@ public class OKHttpUtils implements BaseNet {
                 @Override
                 public Response intercept(Chain chain) throws IOException {
                     Response originalResponse = chain.proceed(chain.request());
+                    ProgressResponseBody body = new ProgressResponseBody(originalResponse.body(), progressListener);
                     return originalResponse.newBuilder()
-                            .body(new ProgressResponseBody(originalResponse.body(), progressListener))
+                            .body(body)
                             .build();
                 }
             };
-//            mCommonClient = mCommonClient.newBuilder()
-//                    .addNetworkInterceptor(interceptor)
-//                    .build();
-            OkHttpClient.Builder builder = mCommonClient.newBuilder();
-            builder.addInterceptor(interceptor);
-            builder.interceptors().clear();
-            builder.interceptors().add(interceptor);
-            return builder.build();
+            return mCommonClient.newBuilder()
+                    .addNetworkInterceptor(interceptor)
+                    .build();
         }
+        int size = mCommonClient.networkInterceptors().size();
+        Log.e(TAG, "getProgressClient: size=" + size);
         return mCommonClient;
     }
 
@@ -318,9 +434,6 @@ public class OKHttpUtils implements BaseNet {
         return lastUrl;
     }
 
-    public void setTimeOut(){
-
-    }
     public void setSupportCookie() {
         mCommonClient.newBuilder().cookieJar(new CookieJar() {
             private final HashMap<HttpUrl, List<Cookie>> cookieStore = new HashMap<>();
@@ -338,84 +451,4 @@ public class OKHttpUtils implements BaseNet {
         });
     }
 
-    @Override
-    public void getRequest(String url, Map<String, Object> params, final IRequestListener listener) {
-        if (!NetUtil.checkNet(sContext)) {
-            if (listener != null) {
-                listener.onFailed(new Exception("do you connection Internet?"));
-            }
-            return;
-        }
-        url = changeURL(url, params);
-        Request request = new Request.Builder()
-                .url(url)
-                .get()
-                .build();
-        Call call = getProgressClient(false, null).newCall(request);
-        call.enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                if (listener != null) {
-                    listener.onFailed(e);
-                }
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (listener != null) {
-                    listener.onSucceed(response.body().string());
-                }
-            }
-        });
-    }
-
-    @Override
-    public void postRequest(String url, Map<String, Object> params, final IRequestListener listener) {
-        if (!NetUtil.checkNet(sContext)) {
-            if (listener != null) {
-                listener.onFailed(new Exception("do you connection Internet?"));
-            }
-            return;
-        }
-        JSONObject json = new JSONObject();
-        try {
-            if (params != null) {
-                for (Map.Entry<String, Object> entry : params.entrySet()) {
-                    String key = entry.getKey();
-                    Object value = entry.getValue();
-                    json.put(key, value);
-                }
-            }
-            Request request = new Request.Builder()
-                    .url(url)
-                    .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), json.toString()))
-                    .build();
-            Call call = getProgressClient(false, null).newCall(request);
-            call.enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    Log.d(TAG, "onFailure: e=" + e.toString());
-                    if (listener != null) {
-                        listener.onFailed(e);
-                    }
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) {
-                    Log.d(TAG, "onResponse: response=" + response.code());
-                    if (listener != null) {
-                        try {
-                            listener.onSucceed(response.body().string());
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }
-            });
-        } catch (JSONException e) {
-            if (listener != null) {
-                listener.onFailed(e);
-            }
-        }
-    }
 }
